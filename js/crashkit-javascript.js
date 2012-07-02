@@ -1,28 +1,38 @@
-// Include this file to use CrashKit for reporting errors in your application.
-// Visit http://crashkitapp.appspot.com/ for details.
-//
-// Copyright (c) 2009 Andrey Tarantsov, YourSway LLC (http://crashkitapp.appspot.com/)
-//
-// Permission to use, copy, modify, and/or distribute this software for any
-// purpose with or without fee is hereby granted, provided that the above
-// copyright notice and this permission notice appear in all copies.
-//
-// THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES
-// WITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF
-// MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR
-// ANY SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES
-// WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN
-// ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
-// OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
-//
-// Huge thanks goes to Eric Wendelin, Luke Smith and Loic Dachary
-// for inspiring us and giving us a head-start in JS stack trace collection.
-// See: http://eriwen.com/javascript/js-stack-trace/
-//
-// This file consists of three parts:
-// 1) definition of CrashKit.report
-// 2) definition of CrashKit.computeStackTrace
-// 3) integration code that sends CrashKit.report notifications to CrashKit servers
+/*!
+ * Include this file to use CrashKit for reporting errors in your application.
+ * Visit http://crashkitapp.appspot.com/ for details.
+ * 
+
+ * Copyright (c) 2009 Andrey Tarantsov, YourSway LLC (http://crashkitapp.appspot.com/)
+ * 
+
+ * Permission to use, copy, modify, and/or distribute this software for any
+ * purpose with or without fee is hereby granted, provided that the above
+ * copyright notice and this permission notice appear in all copies.
+ * 
+
+ * THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES
+ * WITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF
+ * MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR
+ * ANY SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES
+ * WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN
+ * ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
+ * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
+ *
+
+ * Huge thanks goes to Eric Wendelin, Luke Smith and Loic Dachary
+ * for inspiring us and giving us a head-start in JS stack trace collection.
+ * See: http://eriwen.com/javascript/js-stack-trace/
+ *
+
+ * This file consists of three parts:
+ * 1) definition of CrashKit.report
+ * 2) definition of CrashKit.computeStackTrace
+ * 3) integration code that sends CrashKit.report notifications to CrashKit servers
+ *
+ * 2012-01-27 11:35:56 +0400 John Babak <babak.john@gmail.com> Extended to patch jQuery.fn.ready and jQuery.fn.each with try/catch.
+ * 2012-02-22 15:39:41 +0400 John Babak <babak.john@gmail.com> Extended to support Chrome stacktrace.
+ */
 
 var CrashKit = {};
 
@@ -35,6 +45,7 @@ var CrashKit = {};
 //   try { ...code... } catch(ex) { CrashKit.report(ex); }
 //
 // Supports:
+//   - Chrome:  full stack trace with line numbers and column numbers
 //   - Firefox: full stack trace with line numbers
 //   - Opera:   full stack trace with line numbers
 //   - Safari:  line number for the topmost element only, some frames may be missing
@@ -51,11 +62,11 @@ var CrashKit = {};
 CrashKit.report = (function() {
     var handlers = [];
     var lastException = null, lastExceptionStack = null;
-
+    
     var subscribe = function(handler) {
         handlers.push(handler);
     };
-
+    
     var notifyHandlers = function(stack) {
         var exception = null;
         for(var i in handlers)
@@ -66,7 +77,7 @@ CrashKit.report = (function() {
             }
         if (exception) { throw exception; }
     };
-
+    
     var onerrorHandler = function(message, url, lineNo) {
         var stack = null;
         if (lastExceptionStack) {
@@ -75,15 +86,19 @@ CrashKit.report = (function() {
             lastExceptionStack = null;
             lastException = null;
         } else {
-            var location = {'url': url, 'line': lineNo};
+            var location = { 'url': url, 'line': lineNo };
             location.func = CrashKit.computeStackTrace.guessFunctionName(location.url, location.line);
             location.context = CrashKit.computeStackTrace.gatherContext(location.url, location.line);
-            stack = {'mode': 'onerror', 'message': message, 'stack': [location]};
+            stack = { 'mode': 'onerror', 'name': 'Error', 'message': message, 'stack': [location] };
+            if (/Uncaught\s*([^:]+)\s*:\s*(.*)/.test(message)) {
+                stack.name = RegExp.$1;
+                stack.message = RegExp.$2;
+            }
         }
         notifyHandlers(stack);
         return false;
     };
-
+    
     var report = function(ex) {
         if (lastExceptionStack) {
             if (lastException == ex) {
@@ -95,7 +110,7 @@ CrashKit.report = (function() {
                 notifyHandlers(s);
             }
         }
-
+        
         var stack = CrashKit.computeStackTrace(ex, 1);
         lastExceptionStack = stack;
         lastException = ex;
@@ -106,35 +121,58 @@ CrashKit.report = (function() {
                 notifyHandlers(stack);
             }
         }, (stack.incomplete ? 500 : 1));
+        
         throw ex; // re-throw to propagate to the top level (and cause window.onerror)
     };
-
+    
     window.onerror = onerrorHandler;
-
+    
     // jQuery integration (not really tested)
     if(typeof jQuery != 'undefined') {
-      // override jQuery.fn.bind to wrap every provided function in try/catch
-      var jQueryBind = jQuery.fn.bind;
-      jQuery.fn.bind = function(type, data, fn) {
-          if (!fn && data && typeof data == 'function') {
-              fn = data;
-              data = null;
-          }
-          if (fn) {
-              var origFn = fn;
-              var wrappedFn = function() {
-                  try {
-                      return origFn.apply(this, arguments);
-                  } catch (ex) {
-                      CrashKit.report(ex);
-                  }
-              };
-              fn = wrappedFn;
-          }
-          return jQueryBind.call(this, type, data, fn);
-      };
+        function CrashKit_wrap(fn) {
+            return fn;
+            /* DEBUG */
+            return function CrashKit_wrapped() {
+                try {
+                    return fn.apply(this, arguments);
+                } catch (ex) {
+                    CrashKit.report(ex);
+                }
+            };
+            // */
+        }
+        function CrashKit_patch(original, patchGuid) {
+            return original;
+            /* DEBUG */
+            return function CrashKit_patched() {
+                var args = $.makeArray(arguments), orig = [], 
+                    i, ic = args.length,
+                    ret;
+                for (i = 0; i < ic; ++i) {
+                    if (typeof args[i] === 'function') {
+                        orig[i] = args[i];
+                        args[i] = CrashKit_wrap(orig[i]);
+                    }
+                }
+                ret = original.apply(this, args);
+                if (patchGuid) {
+                    for (i = 0; i < ic; ++i) {
+                        if (orig[i]) {
+                            orig[i].guid = args[i].guid; //< handler.guid is used in jQuery.fn.unbind; for unbind to work, mark the original function with the guid given to the wrapper.
+                        }
+                    }
+                }
+                return ret;
+            };
+            // */
+        }
+        
+        // override jQuery.fn.bind and jQuery.fn.ready to wrap every provided function in try/catch
+        jQuery.fn.bind = CrashKit_patch(jQuery.fn.bind, true);
+        jQuery.fn.ready = CrashKit_patch(jQuery.fn.ready);
+        jQuery.fn.each = CrashKit_patch(jQuery.fn.each);
     }
-
+    
     report.subscribe = subscribe;
     return report;
 })();
@@ -194,7 +232,7 @@ CrashKit.report = (function() {
 CrashKit.computeStackTrace = (function() {
     var debug = false;
     var sourceCache = {};
-
+    
     if (typeof XMLHttpRequest == "undefined") {  // IE 5.x-6.x:
         XMLHttpRequest = function() {
             try { return new ActiveXObject("Msxml2.XMLHTTP.6.0"); } catch(e) {}
@@ -216,7 +254,7 @@ CrashKit.computeStackTrace = (function() {
             return "";
         }
     };
-
+    
     var getSource = function(url) {
         if (!(url in sourceCache))
             sourceCache[url] = loadSource(url).split("\n");
@@ -224,7 +262,7 @@ CrashKit.computeStackTrace = (function() {
     };
 
     var guessFunctionNameFromLines = function(lineNo, source) {
-    	var reFunctionArgNames = /function ([^(]*)\(([^)]*)\)/;
+        var reFunctionArgNames = /function ([^(]*)\(([^)]*)\)/;
     	var reGuessFunction = /['"]?([0-9A-Za-z$_]+)['"]?\s*[:=]\s*(function|eval|new Function)/;
     	// Walk backwards from the first line in the function until we find the line which
     	// matches the pattern above, which is the function definition
@@ -247,7 +285,7 @@ CrashKit.computeStackTrace = (function() {
         return "?";
     };
 
-    var guessFunctionName = function(url, lineNo) {
+    var guessFunctionName = function(url, lineNo) {      
         var source = getSource(url);
         return guessFunctionNameFromLines(lineNo, source);
     };
@@ -264,10 +302,10 @@ CrashKit.computeStackTrace = (function() {
         }
         return (anyDefined ? context : null);
     };
-
+    
     var escapeRegExp = function(text) {
         if (!arguments.callee.sRE) {
-            var specials = ['/', '.', '*', '+', '?', '|', '(', ')', '[', ']', '{', '}', '\\'];
+            var specials = [ '/', '.', '*', '+', '?', '|', '(', ')', '[', ']', '{', '}', '\\' ];
             arguments.callee.sRE = new RegExp('(\\' + specials.join('|\\') + ')', 'g');
         }
         return text.replace(arguments.callee.sRE, '\\$1');
@@ -285,7 +323,7 @@ CrashKit.computeStackTrace = (function() {
                 source = source.join("\n");
                 var m = re.exec(source);
                 if (m) {
-                    var result = {'url': urls[i], 'line': null};
+                    var result = { 'url': urls[i], 'line': null };
                     result.startLine = source.substring(0, m.index).split("\n").length;
                     if (singleLineExpected)
                         result.line = result.startLine;
@@ -298,8 +336,8 @@ CrashKit.computeStackTrace = (function() {
     };
 
     var findSourceByFunctionBody = function(func) {
-        var htmlUrls = [window.location.href];
-        var urls = [window.location.href];
+        var htmlUrls = [ window.location.href ];
+        var urls = [ window.location.href ];
         var scripts = document.getElementsByTagName("script");
         for (var i = 0; i < scripts.length; i++) {
             var script = scripts[i];
@@ -345,9 +383,16 @@ CrashKit.computeStackTrace = (function() {
             console.info("Function code not found in HTML and all SCRIPTs (please contact CrashKit support):\n" + code);
         return null;
     };
-
+    
     // Contents of Exception in various browsers.
     //
+    // CHROME:
+    // ex.message = Can't find variable: qq
+    // ex.fileName = http://localhost:5005/static/javascript/crashkit-ie-test.html#
+    // ex.lineNumber = 59
+    // ex.stack = ...stack trace... (see the example below)
+    // ex.name = ReferenceError
+    // 
     // WEBKIT:
     // ex.message = Can't find variable: qq
     // ex.line = 59
@@ -368,18 +413,107 @@ CrashKit.computeStackTrace = (function() {
     // INTERNET EXPLORER:
     // ex.message = ...
     // ex.name = ReferenceError
-    //
+    // 
     // OPERA:
     // ex.message = ...message... (see the example below)
     // ex.name = ReferenceError
     // ex.opera#sourceloc = 11  (pretty much useless, duplicates the info in ex.message)
     // ex.stacktrace = n/a; see 'opera:config#UserPrefs|Exceptions Have Stacktrace'
-
-
-    var computeStackTraceFromFirefoxStackProp = function(ex) {
+    
+    
+    var computeStackTraceFromChromeStackProp = function(ex, depth) {
         if (!ex.stack)
             return null;
-
+            
+        // In Chrome, ex.stack contains a stack trace as a string. Cite from http://code.google.com/p/v8/wiki/JavaScriptStackTraceApi follows:
+        // 
+        // By default, almost all errors thrown by V8 have a stack property that holds the topmost 10 stack frames, formatted as a string. Here's an example of a fully formatted stack trace:
+        // 
+        // ReferenceError: FAIL is not defined
+        //    at Constraint.execute (deltablue.js:525:2)
+        //    at Constraint.recalculate (deltablue.js:424:21)
+        //    at Planner.addPropagate (deltablue.js:701:6)
+        //    at Constraint.satisfy (deltablue.js:184:15)
+        //    at Planner.incrementalAdd (deltablue.js:591:21)
+        //    at Constraint.addConstraint (deltablue.js:162:10)
+        //    at Constraint.BinaryConstraint (deltablue.js:346:7)
+        //    at Constraint.EqualityConstraint (deltablue.js:515:38)
+        //    at chainTest (deltablue.js:807:6)
+        //    at deltaBlue (deltablue.js:879:2)
+        // 
+        // If all the above information is available a formatted stack frame will look like this:
+        //    at Type.functionName [as methodName] (location)
+        // or, in the case of a construct call:
+        //    at new functionName (location)
+        // If only one of functionName and methodName is available, or if they are both available but the same, the format will be:
+        //    at Type.name (location)
+        // If neither is available <anonymous> will be used as the name.
+        // One special case is the global object where the Type is not shown. In that case the stack frame will be formatted as:
+        //    at functionName [as methodName] (location)
+        // The location itself has several possible formats. Most common is the file name, line and column number within the script that defined the current function
+        //    fileName:lineNumber:columnNumber
+        // If the current function was created using eval the format will be
+        //    eval at position
+        // where position is the full position where the call to eval occurred. Note that this means that positions can be nested if there are nested calls to eval, for instance:
+        //    eval at Foo.a (eval at Bar.z (myscript.js:10:3))
+        // If a stack frame is within V8's libraries the location will be
+        //    native
+        // and if is unavailable it will be
+        //    unknown location
+        
+        // Examples:
+        //    at http://my.ivideon.local/:132:67
+        //    at Error.<anonymous> (eval at declareErrorClass (http://my.ivideon.local/static_src/ivideon/components-base/js/ivideon.utils.js:181:23))
+        
+        var firstlineRE = /^.*$/i;
+        var lineRE = /^\s*(eval )?at (?:((?:new )?[\w<>.]+(?: \[as [\w<>.]+\])?) )?[(]?([^)]+)[)]?\s*$/i;
+        var locationRE = /^(native)|(unknown location)|(?:(.*):(\d+):(\d+))$/;
+        var lines = ex.stack.split("\n");
+        var stack = [];
+        for(var i = 0; i < lines.length; ++i) {
+            var line = lines[i];
+            if (i === 0) {
+                if (!firstlineRE.test(line)) {
+                    return null; // first line does not match the format
+                }
+            }
+            else if (lineRE.test(line)) {
+                var func = RegExp.$2;
+                while (RegExp.$1 === 'eval ') { //< eval in the beginning
+                    if (lineRE.test(RegExp.$3)) {
+                        func += ' at '+RegExp.$2;
+                    }
+                    else { break; }
+                }
+                if (RegExp.$3.indexOf('eval ') === 0) { //< eval in the parens
+                    while (RegExp.$3.indexOf('eval ') === 0) {
+                        if (lineRE.test(RegExp.$3)) {
+                            func += ' at '+RegExp.$2;
+                        }
+                        else { break; }
+                    }
+                }
+                if (locationRE.test(RegExp.$3)) {
+                    if (RegExp.$1) { func = RegExp.$1; }
+                    else if (RegExp.$2) { func = RegExp.$2; }
+                    var element = { 'url': RegExp.$3, 'func': func, 'line': RegExp.$4 ? parseInt(RegExp.$4, 10) : null, 'column': RegExp.$5 ? parseInt(RegExp.$5, 10) : null };
+                    if (!element.func && element.line)
+                        element.func = guessFunctionName(element.url, element.line);
+                    if (element.line)
+                        element.context = gatherContext(element.url, element.line);
+                    stack.push(element);
+                }
+            }
+        }
+        if (!stack.length)
+            return null; // ex.stack is defined, but cannot be parsed
+        return { 'mode': 'chrome', 'name': ex.name + (ex.type ? ' ' + ex.type : ''), 'message': ex.message, 'stack': stack, 'error': ex, 'inner': ex.inner };
+    };
+    
+    var computeStackTraceFromFirefoxStackProp = function(ex, depth) {
+        if (!ex.stack)
+            return null;
+            
         // In Firefox, ex.stack contains a stack trace as a string. Example value is:
         //
         // qqq("hi","hi","hi")@file:///Users/andreyvit/Projects/crashkit/javascript-client/sample.js:7
@@ -387,15 +521,15 @@ CrashKit.computeStackTrace = (function() {
         // ppp("hi","hi","hi")@file:///Users/andreyvit/Projects/crashkit/javascript-client/sample.html#:17
         // ("hi","hi","hi")@file:///Users/andreyvit/Projects/crashkit/javascript-client/sample.html#:12
         // xxx("hi")@file:///Users/andreyvit/Projects/crashkit/javascript-client/sample.html#:8
-        // onclick([object MouseEvent])@file:///Users/andreyvit/Projects/crashkit/javascript-client/sample.html#:1
-
+        // onclick([object MouseEvent])@file:///Users/andreyvit/Projects/crashkit/javascript-client/sample.html#:1        
+        
         var lineRE = /^\s*(?:(\w*)\(.*\))?@((?:file|http).*):(\d+)\s*$/i;
         var lines = ex.stack.split("\n");
         var stack = [];
         for(var i in lines) {
             var line = lines[i];
             if (lineRE.test(line)) {
-                var element = {'url': RegExp.$2, 'func': RegExp.$1, 'line': RegExp.$3};
+                var element = { 'url': RegExp.$2, 'func': RegExp.$1, 'line': RegExp.$3 ? parseInt(RegExp.$3, 10) : null };
                 if (!element.func && element.line)
                     element.func = guessFunctionName(element.url, element.line);
                 if (element.line)
@@ -405,10 +539,10 @@ CrashKit.computeStackTrace = (function() {
         }
         if (!stack.length)
             return null; // ex.stack is defined, but cannot be parsed
-        return {'mode': 'firefox', 'name': ex.name, 'message': ex.message, 'stack': stack};
+        return { 'mode': 'firefox', 'name': ex.name, 'message': ex.message, 'stack': stack, 'error': ex, 'inner': ex.inner };
     };
-
-    var computeStackTraceFromOperaMultiLineMessage = function(ex) {
+    
+    var computeStackTraceFromOperaMultiLineMessage = function(ex, depth) {
         // Opera includes a stack trace into the exception message. An example is:
         //
         // Statement on line 3: Undefined variable: undefinedFunc
@@ -419,17 +553,17 @@ CrashKit.computeStackTrace = (function() {
         //           zzz(x, y, z);
         //   Line 3 of inline#1 script in file://localhost/Users/andreyvit/Projects/crashkit/javascript-client/sample.html: In function xxx
         //           yyy(a, a, a);
-        //   Line 1 of function script
+        //   Line 1 of function script 
         //     try { xxx('hi'); return false; } catch(ex) { CrashKit.report(ex); }
         //   ...
         //
         // Note that we don't try to detect Opera because browser detection is evil.
         // Instead, we try to parse any multi-line exception message as Opera stack trace.
-
+        
         var lines = ex.message.split("\n");
         if (lines.length < 4)
             return null;
-
+            
         var lineRE1 = /^\s*Line (\d+) of linked script ((?:file|http)\S+)(?:: in function (\S+))?\s*$/i,
             lineRE2 = /^\s*Line (\d+) of inline#(\d+) script in ((?:file|http)\S+)(?:: in function (\S+))?\s*$/i,
             lineRE3 = /^\s*Line (\d+) of function script\s*$/i;
@@ -442,9 +576,9 @@ CrashKit.computeStackTrace = (function() {
         for (var i=2, len=lines.length; i < len; i += 2) {
             var item = null;
             if (lineRE1.test(lines[i]))
-                item = {'url': RegExp.$2, 'func': RegExp.$3, 'line': RegExp.$1};
+                item = { 'url': RegExp.$2, 'func': RegExp.$3, 'line': RegExp.$1 ? parseInt(RegExp.$1, 10) : null };
             else if (lineRE2.test(lines[i])) {
-                item = {'url': RegExp.$3, 'func': RegExp.$4};
+                item = { 'url': RegExp.$3, 'func': RegExp.$4 };
                 var relativeLine = (RegExp.$1 - 0);  // relative to the start of the <SCRIPT> block
                 var script = inlineScriptBlocks[RegExp.$2 - 1];
                 if (script) {
@@ -462,7 +596,7 @@ CrashKit.computeStackTrace = (function() {
                 var re = new RegExp(escapeCodeAsRegExpForMatchingInsideHTML(lines[i+1]));
                 var source = findSourceInUrls(re, [url], true);
                 if (source)
-                    item = {'url': url, 'line': source.line, 'func': ''};
+                    item = { 'url': url, 'line': source.line, 'func': '' };
             }
             if (item) {
                 if (!item.func)
@@ -473,22 +607,21 @@ CrashKit.computeStackTrace = (function() {
                     item.context = context;
                 else {
                     // if (context) alert("Context mismatch. Correct midline:\n" + lines[i+1] + "\n\nMidline:\n" + midline + "\n\nContext:\n" + context.join("\n") + "\n\nURL:\n" + item.url);
-                    item.context = [lines[i+1]];
+                    item.context = [ lines[i+1] ];
                 }
                 stack.push(item);
             }
         }
         if (!stack.length)
             return null; // could not parse multiline exception message as Opera stack trace
-
-        return {'mode': 'opera', 'name': ex.name, 'message': lines[0], 'stack': stack};
+        return { 'mode': 'opera', 'name': ex.name, 'message': lines[0], 'stack': stack, 'error': ex, 'inner': ex.inner };
     };
-
+    
     var augmentStackTraceWithInitialElement = function(stackInfo, url, lineNo) {
-        var initial = {'url': url, 'line': lineNo};
+        var initial = { 'url': url, 'line': lineNo };
         if (initial.url && initial.line) {
             stackInfo.incomplete = false;
-
+            
             if (!initial.func)
                 initial.func = guessFunctionName(initial.url, initial.line);
             if (!initial.context)
@@ -509,17 +642,16 @@ CrashKit.computeStackTrace = (function() {
             stackInfo.incomplete = true;
         }
     };
-
+    
     var computeStackTraceByWalkingCallerChain = function(ex, depth) {
         var fnRE  = /function\s*([\w\-$]+)?\s*\(/i;
         var stack = [];
-
         var funcs = {}, recursion = false;
         for(var curr = arguments.callee.caller; curr && !recursion; curr = curr.caller) {
             var fn = curr.name || '';
             if (!fn)
                 fn = fnRE.test(curr.toString()) ? RegExp.$1 || '' : '';
-
+            
             var source = findSourceByFunctionBody(curr);
             var url = null, line = null;
             if (source) {
@@ -532,39 +664,48 @@ CrashKit.computeStackTrace = (function() {
             recursion = !!funcs[curr];
             funcs[curr] = true;
 
-            var item = {'url': url, 'func': fn, 'line': line};
+            var item = { 'url': url, 'func': fn, 'line': line };
             if (recursion) item.recursion = true;
             stack.push(item);
         }
         stack.splice(0, depth);
-
-        var result = {'mode': 'callers', 'name': ex.name, 'message': ex.message, 'stack': stack};
+        
+        var result = { 'mode': 'callers', 'name': ex.name, 'message': ex.message, 'stack': stack, 'error': ex, 'inner': ex.inner };
         augmentStackTraceWithInitialElement(result, ex.sourceURL || ex.fileName, ex.line || ex.lineNumber);
         return result;
     };
-
+    
     var computeStackTrace = function(ex, depth) {
         var stack = null;
         depth = (typeof depth == 'undefined' ? 0 : depth-0);
-
+        
+        if (Object.prototype.toString.call(ex.stack) === '[object Array]') {
+            return { 'mode': 'crashkit', 'name': ex.name, 'message': ex.message, 'stack': ex.stack, 'error': ex, 'inner': ex.inner };
+        }
+        
+        try {
+            stack = computeStackTraceFromChromeStackProp(ex);
+            if (stack) return stack;
+        } catch(e) { if(debug) throw e; }
+        
         try {
             stack = computeStackTraceFromFirefoxStackProp(ex);
             if (stack) return stack;
         } catch(e) { if(debug) throw e; }
-
+        
         try {
             stack = computeStackTraceFromOperaMultiLineMessage(ex);
             if (stack) return stack;
         } catch(e) { if(debug) throw e; }
-
+        
         try {
             stack = computeStackTraceByWalkingCallerChain(ex, depth + 1);
             if (stack) return stack;
         } catch(e) { if(debug) throw e; }
-
-        return { 'mode': 'failed' };
+        
+        return { 'mode': 'failed', 'name': ex.name, 'message': ex.message, 'stack': [], 'error': ex, 'inner': ex.inner };
     };
-
+    
     var computeStackTraceOfCaller = function(depth) {
         depth = (typeof depth == 'undefined' ? 0 : depth-0) + 1; // "+ 1" because "ofCaller" should drop one frame
         try {
@@ -573,12 +714,12 @@ CrashKit.computeStackTrace = (function() {
             return computeStackTrace(ex, depth+1);
         }
     };
-
+    
     computeStackTrace.augmentStackTraceWithInitialElement = augmentStackTraceWithInitialElement;
     computeStackTrace.guessFunctionName = guessFunctionName;
     computeStackTrace.gatherContext = gatherContext;
     computeStackTrace.ofCaller = computeStackTraceOfCaller;
-
+    
     return computeStackTrace;
 })();
 
