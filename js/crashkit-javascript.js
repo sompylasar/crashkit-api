@@ -130,8 +130,6 @@ CrashKit.report = (function() {
     // jQuery integration (not really tested)
     if(typeof jQuery != 'undefined') {
         function CrashKit_wrap(fn) {
-            return fn;
-            /* DEBUG */
             return function CrashKit_wrapped() {
                 try {
                     return fn.apply(this, arguments);
@@ -139,11 +137,8 @@ CrashKit.report = (function() {
                     CrashKit.report(ex);
                 }
             };
-            // */
         }
         function CrashKit_patch(original, patchGuid) {
-            return original;
-            /* DEBUG */
             return function CrashKit_patched() {
                 var args = $.makeArray(arguments), orig = [], 
                     i, ic = args.length,
@@ -164,7 +159,6 @@ CrashKit.report = (function() {
                 }
                 return ret;
             };
-            // */
         }
         
         // override jQuery.fn.bind and jQuery.fn.ready to wrap every provided function in try/catch
