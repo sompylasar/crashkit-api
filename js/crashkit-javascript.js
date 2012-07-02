@@ -2,15 +2,12 @@
  * Include this file to use CrashKit for reporting errors in your application.
  * Visit http://crashkitapp.appspot.com/ for details.
  * 
-
  * Copyright (c) 2009 Andrey Tarantsov, YourSway LLC (http://crashkitapp.appspot.com/)
  * 
-
  * Permission to use, copy, modify, and/or distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
  * copyright notice and this permission notice appear in all copies.
  * 
-
  * THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES
  * WITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF
  * MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR
@@ -19,20 +16,19 @@
  * ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
  * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  *
-
  * Huge thanks goes to Eric Wendelin, Luke Smith and Loic Dachary
  * for inspiring us and giving us a head-start in JS stack trace collection.
  * See: http://eriwen.com/javascript/js-stack-trace/
- *
-
- * This file consists of three parts:
- * 1) definition of CrashKit.report
- * 2) definition of CrashKit.computeStackTrace
- * 3) integration code that sends CrashKit.report notifications to CrashKit servers
- *
- * 2012-01-27 11:35:56 +0400 John Babak <babak.john@gmail.com> Extended to patch jQuery.fn.ready and jQuery.fn.each with try/catch.
- * 2012-02-22 15:39:41 +0400 John Babak <babak.john@gmail.com> Extended to support Chrome stacktrace.
  */
+
+// This file consists of three parts:
+// 1) definition of CrashKit.report
+// 2) definition of CrashKit.computeStackTrace
+// 3) integration code that sends CrashKit.report notifications to CrashKit servers
+//
+// 2012-01-27 11:35:56 +0400 John Babak <babak.john@gmail.com> Extended to patch jQuery.fn.ready and jQuery.fn.each with try/catch.
+// 2012-02-22 15:39:41 +0400 John Babak <babak.john@gmail.com> Extended to support Chrome stacktrace.
+
 
 var CrashKit = {};
 
