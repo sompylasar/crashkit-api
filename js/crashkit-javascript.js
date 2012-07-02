@@ -718,3 +718,136 @@ CrashKit.computeStackTrace = (function() {
 
     return computeStackTrace;
 })();
+
+// this part is specific to CrashKit web application
+(function() {
+    var crashKitHost = null;
+    var webServiceUrl = null;
+
+    var computeWebServiceUrl = function() {
+        var els = document.getElementsByTagName("SCRIPT");
+        for (var i = 0; i < els.length; i++) {
+            var el = els[i];
+            var src = el.src;
+            if (src && src.indexOf("crashkit-javascript.js?") >= 0) {
+                crashKitHost = src.substring(src.indexOf("://") + 3);
+                crashKitHost = crashKitHost.substring(0, crashKitHost.indexOf("/"));
+                
+                var x = src.substring(src.indexOf("?") + 1).split("/");
+                var proto = (("https:" == document.location.protocol) ? "https://" : "http://");
+                webServiceUrl = proto + crashKitHost + "/" + x[0] + "/products/" + x[1] + "/post-report/0/0";
+            }
+        }
+    };
+
+    var encodeJSON = function() {
+        var c = {"\b":"b","\t":"t","\n":"n","\f":"f","\r":"r",'"':'"',"\\":"\\","/":"/"},
+            d = function(n){return n<10?"0".concat(n):n},
+            e = function(c,f,e){e=eval;delete eval;if(typeof eval==="undefined")eval=e;f=eval(""+c);eval=e;return f},
+            i = function(e,p,l){return 1*e.substr(p,l)},
+            p = ["","000","00","0",""],
+            rc = null,
+            rd = /^[0-9]{4}\-[0-9]{2}\-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}$/,
+            rt = /^([0-9]+|[0-9]+[,\.][0-9]{1,3})$/,
+            rs = /(\x5c|\x2F|\x22|[\x0c-\x0d]|[\x08-\x0a])/g,
+            s = function(i,d){return "\\".concat(c[d])},
+            ru = /([\x00-\x07]|\x0b|[\x0e-\x1f])/g,
+            u = function(i,d){
+                var    n=d.charCodeAt(0).toString(16);
+                return "\\u".concat(p[n.length],n)
+            },
+            v = function(k,v){return $[typeof result](result)!==Function&&(v.hasOwnProperty?v.hasOwnProperty(k):v.constructor.prototype[k]!==v[k])},
+            $ = {
+                "boolean":function(){return Boolean},
+                "function":function(){return Function},
+                "number":function(){return Number},
+                "object":function(o){return o instanceof o.constructor?o.constructor:null},
+                "string":function(){return String},
+                "undefined":function(){return null}
+            },
+            $$ = function(m){
+                function $(c,t){t=c[m];delete c[m];try{e(c)}catch(z){c[m]=t;return 1}};
+                return $(Array)&&$(Object)
+            };
+        try { rc = new RegExp('^("(\\\\.|[^"\\\\\\n\\r])*?"|[,:{}\\[\\]0-9.\\-+Eaeflnr-u \\n\\r\\t])+?$') }
+        catch(z) { rc=/^(true|false|null|\[.*\]|\{.*\}|".*"|\d+|\d+\.\d+)$/ };
+
+        var encodeJSON = function(self) {
+            if (self === null) return "null";
+            if (self === undefined) return "null";
+            var result, type = typeof self;
+            var tmp = $[type](self);
+            if (tmp == null) return null;
+            switch (tmp) {
+                case Array:
+                    result = [];
+                    for(var    i = 0, j = 0, k = self.length; j < k; j++) {
+                        if(self[j] !== undefined && (tmp = encodeJSON(self[j])))
+                            result[i++] = tmp;
+                    };
+                    return "[".concat(result.join(","), "]");
+                case Boolean:
+                    return String(self);
+                case Date:
+                    return '"'.concat(self.getFullYear(), '-', d(self.getMonth() + 1), '-', d(self.getDate()), '"');
+                case Function:
+                    return "";
+                case Number:
+                    return isFinite(self) ? String(self) : "null";
+                case String:
+                    return '"'.concat(self.replace(rs, s).replace(ru, u), '"');
+                default:
+                    var    i = 0, key;
+                    result = [];
+                    for (key in self) {
+                        if (self[key] !== undefined && (tmp = encodeJSON(self[key])))
+                            result[i++] = '"'.concat(key.replace(rs, s).replace(ru, u), '":', tmp);
+                    };
+                    return "{".concat(result.join(","), "}");
+            }
+        };
+        return encodeJSON;
+    }();
+    
+    var encodeError = function (stack) {
+        return encodeJSON([{
+            "userActionOrScreenNameOrBackgroundProcess": '',
+            "severity": "major",
+            "exception": stack,
+            "data": {
+                "cookie": document.cookie,
+                "url": window.location.href
+            },
+            "env": {
+                "user_agent": navigator.userAgent,
+                "opera": !!window.opera,
+                "vendor": navigator.vendor,
+                "platform": navigator.platform
+            },
+            "language": "javascript"
+        }]);
+    };
+
+    var sendPayload = function(text){
+        var request = new XMLHttpRequest();
+        request.open("POST", webServiceUrl, false);
+        request.setRequestHeader("Content-Type", "text/plain;charset=UTF-8");
+        request.send(text);
+        if (!request.getResponseHeader("Date") || request.status != 200) {
+            // oops
+        }
+    };
+    
+    var sendToCrashKit = function(stack) {
+        if (webServiceUrl == null)
+            computeWebServiceUrl();
+        if (webServiceUrl == null)
+            return;
+        var json = encodeError(stack);
+        if (window.console)
+            window.console.info("Error report sent to " + crashKitHost + ":\n" + json);
+        sendPayload(json);
+    };
+    
+    CrashKit.report.subscribe(sendToCrashKit);
+})();
