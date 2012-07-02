@@ -162,11 +162,11 @@ CrashKit.report = (function() {
                 return ret;
             };
         }
-        /*
+
         // override jQuery.fn.bind and jQuery.fn.ready to wrap every provided function in try/catch
         jQuery.fn.bind = CrashKit_patch(jQuery.fn.bind, true);
         jQuery.fn.ready = CrashKit_patch(jQuery.fn.ready);
-        jQuery.fn.each = CrashKit_patch(jQuery.fn.each);*/
+        jQuery.fn.each = CrashKit_patch(jQuery.fn.each);
     }
 
     report.subscribe = subscribe;
