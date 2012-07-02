@@ -263,12 +263,12 @@ CrashKit.computeStackTrace = (function() {
 
     var guessFunctionNameFromLines = function(lineNo, source) {
         var reFunctionArgNames = /function ([^(]*)\(([^)]*)\)/;
-    	var reGuessFunction = /['"]?([0-9A-Za-z$_]+)['"]?\s*[:=]\s*(function|eval|new Function)/;
-    	// Walk backwards from the first line in the function until we find the line which
-    	// matches the pattern above, which is the function definition
-    	var line = "";
-    	var maxLines = 10;
-    	for (var i = 0; i < maxLines; ++i) {
+        var reGuessFunction = /['"]?([0-9A-Za-z$_]+)['"]?\s*[:=]\s*(function|eval|new Function)/;
+        // Walk backwards from the first line in the function until we find the line which
+        // matches the pattern above, which is the function definition
+        var line = "";
+        var maxLines = 10;
+        for (var i = 0; i < maxLines; ++i) {
             line = source[lineNo-i] + line;
             if (line !== undefined)
             {
