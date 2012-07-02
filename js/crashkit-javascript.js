@@ -143,13 +143,18 @@ CrashKit.report = (function() {
                 var args = $.makeArray(arguments), orig = [], 
                     i, ic = args.length,
                     ret;
+                
+                // Patch functions passed as arguments:
                 for (i = 0; i < ic; ++i) {
                     if (typeof args[i] === 'function') {
                         orig[i] = args[i];
                         args[i] = CrashKit_wrap(orig[i]);
                     }
                 }
+                
                 ret = original.apply(this, args);
+                
+                // Patch function guids of jQuery event system after the original function is applied:
                 if (patchGuid) {
                     for (i = 0; i < ic; ++i) {
                         if (orig[i]) {
@@ -157,6 +162,7 @@ CrashKit.report = (function() {
                         }
                     }
                 }
+                
                 return ret;
             };
         }
