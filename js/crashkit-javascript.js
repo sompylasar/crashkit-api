@@ -781,7 +781,7 @@ CrashKit.computeStackTrace = (function() {
             switch (tmp) {
                 case Array:
                     result = [];
-                    for(var    i = 0, j = 0, k = self.length; j < k; j++) {
+                    for(var i = 0, j = 0, k = self.length; j < k; j++) {
                         if(self[j] !== undefined && (tmp = encodeJSON(self[j])))
                             result[i++] = tmp;
                     };
@@ -797,7 +797,7 @@ CrashKit.computeStackTrace = (function() {
                 case String:
                     return '"'.concat(self.replace(rs, s).replace(ru, u), '"');
                 default:
-                    var    i = 0, key;
+                    var i = 0, key;
                     result = [];
                     for (key in self) {
                         if (self[key] !== undefined && (tmp = encodeJSON(self[key])))
